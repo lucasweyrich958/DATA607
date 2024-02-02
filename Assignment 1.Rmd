@@ -1,0 +1,69 @@
+---
+title: "DATA607 Assignment 1"
+author: "Lucas Weyrich"
+date: "2024-02-02"
+output: pdf_document
+---
+
+I chose to pick the "Club Soccer Predictions" dataset from fivethirtyeight. There is no article assoicated with it, but an interactive website that allows for searching for teams, games, and season, found here: https://projects.fivethirtyeight.com/soccer-predictions/.
+
+First, I uploaded the csv file into my Github rep for this class, from where I retrieve it and save as a dataframe called df.
+
+```{r}
+library(RCurl)
+x <- getURL("https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/spi_matches.csv") 
+df <- read.csv(text = x)
+```
+
+After I saved it, I am using the head() function to get a good glimpse of what the dataset is about.
+
+```{r}
+head(df)
+```
+As we can see, the head() function shows the first few rows for the dataset, and we see that there are several seasons worth of data for several proefessional soccer leagues. Specifically, this dataset is concerned with the "Soccer Power Index," which is calculated using individual players' data from previous games. It is adjusted every week. Using the SPI, a win probability can then be calculated. 
+Because I am VfB Stuttgart fan, I decided to investigate only this club, specifically for season 2022 - 23.
+I will filter the dataframe for the club and season, and save as new dataframe called vfb_df.
+
+```{r}
+vfb_df = subset(df, team1 == 'VfB Stuttgart' | team2 == 'VfB Stuttgart')
+vfb_df = subset(vfb_df, season == 2022)
+head(vfb_df)
+```
+head() shows again the same columns as above, just now that either team1 and team2 has VfB Stuttgart in it, and the year is 2022, for the repsective season. Now I want to make sure I capture only the SPI and win probability for VfB, so I will use ifelse to filter the respecitve columns depending if VfB Stuttgart was home or away for a specific game.
+
+```{r}
+vfb_df$spi <- ifelse(vfb_df$team1 == "VfB Stuttgart", vfb_df$spi1, vfb_df$spi2)
+vfb_df$prob <- ifelse(vfb_df$team1 == "VfB Stuttgart", vfb_df$prob1, vfb_df$prob2)
+vfb_df = vfb_df[,(names(vfb_df) %in% c('date','team1', 'team2', 'spi', 'prob'))]
+head(vfb_df)
+```
+
+Now I will change the column names for more intuitive names.
+```{r}
+colnames(vfb_df) = c('Date', 'Home_Team', 'Away_Team', 'SPI', 'Prob')
+head(vfb_df)
+```
+head() shows that now we are left with five columns of interest with names that make sense, and we can now plot some figures that gives us a sense of the data. I decided to plot a linegraph that shows the SPI as function of gameday, and also plot a scatterplot that shows SPI as function of win probability, alongside a correlation line to get a first idea on whether these two variables are correlated.
+
+```{r}
+library(ggplot2)
+line = ggplot(vfb_df, aes(x = Date)) +
+  geom_line(aes(y = SPI, group = 1), color = "#FFAEBC", linetype = "solid") +
+  geom_point(aes(y = SPI, group = 1), color = "#FFAEBC", size = 2) +
+  labs(title = "VfB Stuttgart Soccer Power Index (SPI) 2022 - 23",
+       x = "Gameday Dates",
+       y = "SPI") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+scatter = ggplot(vfb_df, aes(x = SPI, y = Prob)) +
+  geom_point(color = '#FFAEBC', size = 3) +
+  geom_smooth(method = "lm", color = '#FFAEBC') +
+  labs(title = "VfB Stuttgart SPI / Win Probabilities")
+
+line
+scatter
+```
+
+The line graph shows that VfB Stuttgart had, across the season (34 games), a stable SPI between 64 and 68. This could now be contrasted with the SPI of other teams, or the league mean. Additionaly, the scatterplot shows that there is a weak positive correlation between SPI and win probability, such that a higher SPI leads to a slgithly greater win probability. However, since the SPI of VfB Stuttgart did not change that drastically throughout the season, it would be interesting to see whether this correlation is stronger in other clubs with a more fluctuating SPI. Generally, I would have imagined the correlation to be stronger. 
+Lastly, VfB Stuttgart was not particularly good in the season 2022 - 23, but they are in the 2023 - 24 season, so far. Therefore, it would be interesting how the SPI compares between the season, and how the win probabilities change with each opponent. One could likely use the SPI and other variables from this datset to train a machine learning model to predict future scores for each match VfB Stuttgart is involved. Interestingly, Amazon AWS does this already, which data is shown, more or less, prior to the game in the television broadcast.
+
