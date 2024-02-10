@@ -1,0 +1,60 @@
+---
+title: "DATA607 Assignment 3"
+author: "Lucas Weyrich"
+date: "2024-02-10"
+output: html_document
+---
+
+For this assignment one of the tasks is to import a dataset from Fivethirtyeight that includes college majors. Since it already is available on Github, it is imported from the original source below.
+```{r Import Data}
+majors = read.csv('https://raw.githubusercontent.com/fivethirtyeight/data/master/college-majors/majors-list.csv')
+head(majors)
+```
+The head() function allows a quick glimpse into the data set, which shows there are three columns, one of them being the Major. The task is to filter for the majors that contain the words DATA or STATISTICS.
+```{r Subset Majors}
+ds_majors = subset(majors, grepl(paste(c('DATA','STATISTICS'), collapse = "|"), Major))
+```
+Using the subset and grepl functions a new dataframe is created that includes only the majors with the keywords, subsequently being only three. The subset function basically grabs the selected rows, while the grepl function can match partial strings. This is important here as none of the majors are just called DATA, but rather have it as part of the full name.
+
+Next task involves a backwards engineering from a character vector to printing the input for a character vector (e.g., c(...).
+```{r Character Vectors}
+veggies_chr = c("bell pepper", "bilberry", "blackberry", "blood orange", "blueberry", "cantaloupe", "chili pepper", "cloudberry", "elderberry", "lime", "lychee", "mulberry", "olive", "salal berry")
+
+veggies_conc = paste('"', veggies_chr, '"', collapse = ', ')
+cat('c(', veggies_conc, ')')
+```
+The character vector is created first with all the necessary strings. Then they are concatenated using paste() and the additional collapse argument allows to change the separator. Lastly, cat() prints the new concatenated character vector with the c( and ) at the end.
+
+The next task should describe the following regexs in words.
+(.)\1\1
+"(.)(.)\\2\\1"
+(..)\1
+"(.).\\1.\\1"
+"(.)(.)(.).*\\3\\2\\1"
+
+The first one should match to something like 11 or 22, because it matches any character with (.), and the two \1 mean to match it twice.
+The second one can match two chracters in a specific sequence, such as 1221 as \2 first matches the second character and the last \1 matches the first character again.
+The third one can match, similarly to the first one, two characters in a row like 11.
+The fourth one is essentially the first one, matching two in a row like 11, however, the added dot without parentheses allows to add another letter in between, like 121.
+The last one is tricky but matches three characters. The * is a wildcard so there can be anything in between, and the last expressions show the first three matched vectors, but backwards. For example, it could be 123*321.
+
+The last task is to construct regular expressions that match sevral things
+1: Regex that start and end with the same character
+```{r}
+'(.)\1'
+```
+
+1: Regex that start and end with the same character
+```{r}
+'(.)*\1'
+```
+
+2: Regex that contain a repeated pair of letters (e.g. "church" contains "ch" repeated twice.)
+```{r}
+'(.)(.)*\1\2'
+```
+
+3. Regex that contain one letter repeated in at least three places (e.g. "eleven" contains three "e"s.)
+```{r}
+'*(.)*\1*\1*'
+```
