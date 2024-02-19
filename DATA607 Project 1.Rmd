@@ -1,0 +1,92 @@
+---
+title: "DATA607 Project 1"
+author: "Lucas Weyrich"
+date: "2024-02-16"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Project Description: In this project, you’re given a text file with chess tournament results where the information has some structure. Your job is to create an R Markdown file that generates a .CSV file (that could for example be imported into a SQL database) with the following information for all of the players: Player’s Name, Player’s State, Total Number of Points, Player’s Pre-Rating, and Average Pre Chess Rating of Opponents --
+
+As the first step, the text file with the chest results is imported and packages loaded
+
+```{r}
+library(tidyselect)
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+
+raw_results = read.table('https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/tournament_results.txt', sep = '|', fill = T, header = F)
+```
+
+read.table() above reads the txt file from the internet as a dataframe into R. Unfortunately, it is not a CSV so I had to define another separator and found that \| was a common one. Additionally, I had to set the header to FALSE so that the table can be imported.
+
+Next, I need to clean up the data frame and edit it.
+```{r}
+edited_df = raw_results %>%
+  filter(V1 != '-----------------------------------------------------------------------------------------') #Remove the dashes as they are unneeded
+states = edited_df %>%
+  filter(!grepl('\\d', V1)) #Create a new dataframe by filtering that there are no numbers in V1, this will separate the states but also other information
+names = edited_df %>%
+  filter(!grepl('\\d', V2)) #Create a new dataframe by filtering that there are no numbers in V2, this will separate the names and other info
+
+pre_ratings = as.data.frame(str_extract(states$V2, '(?<=R: )\\d+')) #Complicated regex that extracts the digits after "R: " to extract pre ratings
+pre_ratings2 = as.data.frame(str_extract(states$V2, '(?<=R:  )\\d+')) #Because number below 1000 have an additional white space, I am extracting them in a separate data frame
+post_ratings = as.data.frame(str_extract(states$V2, '(?<=->)\\d+')) #Complicated regex that extracts the digits after "->" to extract parts of the post ratings as new dataframe
+post_ratings2 = as.data.frame(str_extract(states$V2, '(?<=->\\s)\\d+')) #Because some numbers have a white space after "->" I am extracting those separately as new dataframe
+colnames(pre_ratings) = 'x' #Rename the columns for easier use
+colnames(pre_ratings2) = 'x' #Rename the columns for easier use
+colnames(post_ratings) = 'x' #Rename the columns for easier use
+colnames(post_ratings2) = 'x' #Rename the columns for easier use
+pre_ratings = as.data.frame(coalesce(pre_ratings$x, pre_ratings2$x)) #Use calesce to fuse the two post ratings
+post_ratings = as.data.frame(coalesce(post_ratings$x, post_ratings2$x)) #Use calesce to fuse the two post ratings
+colnames(post_ratings) = 'x' #Rename the columns for easier use
+names = names[-c(1, 2), ] #Remove the top two rows as they are unneeded
+states = states[-c(1, 2), ] #Remove the top two rows as they are unneeded
+post_ratings = post_ratings[-c(1, 2), ] #Remove the top two rows as they are unneeded
+pre_ratings = pre_ratings[-c(1, 2), ] #Remove the top two rows as they are unneeded (could have done this above)
+
+names = names %>%
+  separate(V4, into = c('V4x', 'P1'), sep = "  ", extra = "merge")
+names = names %>%
+  separate(V5, into = c('V4x', 'P2'), sep = "  ", extra = "merge")
+names = names %>%
+  separate(V6, into = c('V4x', 'P3'), sep = "  ", extra = "merge")
+names = names %>%
+  separate(V7, into = c('V4x', 'P4'), sep = "  ", extra = "merge")
+names = names %>%
+  separate(V8, into = c('V4x', 'P5'), sep = "  ", extra = "merge")
+names = names %>%
+  separate(V9, into = c('V4x', 'P6'), sep = "  ", extra = "merge")
+names = names %>%
+  separate(V10, into = c('V4x', 'P7'), sep = "  ", extra = "merge")
+names = names[, -c(10)] #All these repeated functions take the columns that show against who someone played and splits them based on whitespace. Found out that when keeping the first column name, which is not needed, the same, it deletes the previous ones already, saving time later on
+
+final_df = cbind(names,states,pre_ratings,post_ratings) #Column-bind all newly created dataframes as the final one
+colnames(final_df) = c('ID', 'Player_Name','Score','P1','P2','P3','P4','P5','P6','P7','x','State','Old1','Old2','Old3','Old4','Old5','Old6','Old7','Old8','Old9','Old10','Pre_Rating','Post_Rating') #Change the column names
+
+final_df = final_df %>%
+  mutate_at(vars(c('ID','Score','P1','P2','P3','P4','P5','P6','P7','Pre_Rating','Post_Rating')), as.numeric) #Change some columns to numeric
+
+final_df = final_df %>%
+  rowwise() %>%
+  mutate(Mean_Opponent_Pre_Rating = mean(final_df$Pre_Rating[final_df$ID %in% c(P1, P2, P3, P4, P5, P6, P7)],     na.rm = TRUE)) #Use rowwise followed by mutate to calculate the mean opponent rating. Within the mean function, I am indexing to all of the opponent's IDs, and remove NAs while doing it so I don't get an error. 
+
+final_df = final_df[c('Player_Name','Score','State','Pre_Rating','Post_Rating','Mean_Opponent_Pre_Rating')] #Select only the required columns for the CSV file
+head(final_df)
+```
+
+Above is the code that edits and cleans the data frame, and then calculates the mean. I have added comments on each function to elaborate on what it does. Before saving the file as CSV on the user's local directory, we can investigate some graphs to get inspired what we could do with the clean data.
+
+```{r}
+ggplot(data = final_df, aes(x = Score, y = Pre_Rating)) +
+  geom_point(color = '#944E63', size = 2) +
+  geom_smooth(method = 'lm', color = '#E8C872')
+```
+The graph depicts a scatterplot that shows the pre rating as function of the tournament score, and it shows that there is a positive relationship between both variables, suggesting that players with a higher pre rating also attained a higher score, which is expectaple.
+Finally, below is the code that saves the file as CSV.
+```{r}
+write.csv(final_df,'Chess Tournament Results.csv') #Write csv
+```
