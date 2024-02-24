@@ -1,0 +1,52 @@
+---
+title: "DATA607 Assignment Wk 5"
+author: "Lucas Weyrich"
+date: "2024-02-24"
+output: html_document
+---
+The current assignment includes importing an untidy dataset of flight data, to clean it and analyze it as well.
+First, we will import packages and the dataset from my Github repository. Additionally, we will get a quick look at the dataset.
+The dataset involves airlines and how many of their flights to specific destinations airports are either delayed or on time.
+```{r cars}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+df_raw = read.csv('https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/Flightdata.csv')
+head(df_raw)
+```
+Using head(), we can see that this dataset is in a "messy" wide format, because there are some unnamed columns, as well as long formatted on time/delayed conditions, with destiations being in wide format. In order to analyze this better, the dataset will be transformed into long format, so that the destinations are in a row, and the airlines are in columns.
+
+```{r}
+df_clean = df_raw %>%
+  drop_na() %>%
+  mutate(X = na_if(X, "")) %>%
+  fill(X, .direction = 'downup') %>%
+  rename(Airline = X, Status = X.1)
+head(df_clean)
+```
+Using dplyr and tidy, the dataset was cleaned. First, all NAs were dropped, however, it appeared that some empty cells were not considered missing (NA), therefore, we needed to consider them as NA before proceeding. Once that was done, the airline name only appeared in the rows where the status was on time, and not delayed. Because this is systematic, usiung fill() with the direction 'downup' allows us to grab the top and bottom values of the column and copy them. Then renamed the columns for airline and status. Looking at the dataframe now, it appears much cleaner.
+
+Below, we'll do some analyses
+```{r}
+df_clean = df_clean %>%
+  group_by(Airline, Status) %>%
+  mutate(Total = sum(Los.Angeles, Phoenix, San.Diego, San.Francisco, Seattle))
+
+delayed = df_clean %>%
+  filter(Status == 'delayed')
+
+ggplot(delayed, aes(x = Airline, y = Total)) +
+  geom_bar(stat = 'identity', color='blue', fill='white', width=0.3)
+
+df_long = pivot_longer(df_clean, c('Los.Angeles','Phoenix','San.Diego','San.Francisco','Seattle')) %>%
+  rename(Destination = name, Count = value) %>%
+  filter(Status == 'delayed')
+
+ggplot(df_long, aes(x = Destination, y = Count, fill = Airline)) +
+  geom_bar(stat = 'identity', position=position_dodge())
+```
+
+First, I am grouping the clean data frame by airline and status, and then summing across the destination columns, creating a new column called total. Then I create a new data frame called "delayed" where I filter for only the delayed counts. Using that data frame, I create a bar plot that shows the total count of delays per airline. We can see that Am West appears to have a higher count of delays across all destination airports. Additionally, I am pivoting the clean dataframe into long format and then again filter by delays, so that I can plot the amount of delayed flights by airline and destination. What is apparent here is that Am West does not have more delayed flights than Alaska airlines everywhere. Their most delays are seen in Phoenix, while Alaska's most delays are seen in Seattle. Both airlines have the least amount of delayed flights respectively at the destinations where the other airline has the most. This could point to the fact that these airlines do not fly to these destinations as often, and that the desitnation with the most delays is one of their hubs. Something that I know about Alaska Airlines for a fact, as Seattle is their main hub. This means that these absolut values are biased towards how often an airline approaches a destination.
+
+
+
