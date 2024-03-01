@@ -1,0 +1,209 @@
+---
+title: "DATA607 Project 2"
+author: "Lucas Weyrich"
+date: "2024-03-01"
+output: html_document
+---
+Choose any three of the “wide” datasets identified in the Week 6 Discussion items. (You may
+use your own dataset; please don’t use my Sample Post dataset, since that was used in your
+Week 6 assignment!) For each of the three chosen datasets:
+ Create a .CSV file (or optionally, a MySQL database!) that includes all of the information
+included in the dataset. You’re encouraged to use a “wide” structure similar to how the
+information appears in the discussion item, so that you can practice tidying and
+transformations as described below.
+ Read the information from your .CSV file into R, and use tidyr and dplyr as needed to
+tidy and transform your data. [Most of your grade will be based on this step!]
+ Perform the analysis requested in the discussion item.
+ Your code should be in an R Markdown file, posted to rpubs.com, and should include
+narrative descriptions of your data cleanup work, analysis, and conclusions.
+
+The three datasets picked are: (1) FIFA21 Player Information (2) Surface Temperature by Country (3) Cost of Scientific Publications in 2012 - 13
+
+## FIFA21 Player Information
+
+The FIFA21 Player Information dataset comes webscraped. It is in long format but contains a lot of incomplete data, and also many special characters. In order to analyze this dataset, it needs to be cleaned first. The main question here is: (1) do players are paid more if they're with a club longer, while holding skill constant (i.e., as covariate)
+```{r}
+library(tidyr)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+fifa_raw = read.csv('https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/fifa21_male2.csv')
+summary(fifa_raw)
+```
+As can be seen with the summary() command, there is a lot of information in this spreadsheet, and most of the columns are characters, even though they contain numbers. So the first step is to filter out the columns of interest, followed by adjusting the data types for each column. Also, there is some missing data, but these are not considered NA, so they need to be set as NA, then removed. The missing data seems to be a result of retired players, as they do not have a current club, therefore, these players are missing a Joined date.
+```{r}
+fifa = fifa_raw %>%
+  select(Name, Age, OVA, Club, Joined, Value, Wage, Contract) %>%
+  mutate(Joined = na_if(Joined, '')) %>%
+  drop_na(Joined)
+
+fifa = fifa %>% 
+  filter(!grepl('Free', Contract)) %>%
+  filter(!grepl('On Loan', Contract)) %>%
+  filter(!Value == '€0')
+```
+The code above retained only relevant columns, and removed NAs in the Joined date. After visual inspection in connection with domain knowledge, it became apparent that the Contract columns contains more information than needed, namely whether a player is on loan to another club or free agent. Both factors are outside of the scope of the question, so the removed these using grepl() to partially match. Additionally, the code removed player with a value of 0€. Next, the contract column needs to be split into two: contract start and end date, and then the value and wage columns need to be adjusted to be numerical. 
+
+```{r}
+fifa = fifa %>%
+  separate(Contract, into = c('Contract_Start', 'Contract_End'), sep = '~') %>%
+  mutate(Contract_End = as.numeric(Contract_End)) %>%
+  mutate(Contract_Start = as.numeric(str_sub(Contract_Start, start = -5)))
+
+fifa = fifa %>%
+  mutate(Value = case_when(
+    str_detect(Value, 'K$') ~ as.numeric(str_extract(Value, '\\d+')) * 1000,
+    str_detect(Value, 'M$') ~ as.numeric(str_extract(Value, '\\d+')) * 1000000
+  ))
+
+fifa = fifa %>%
+  mutate(Wage = case_when(
+    str_detect(Wage, 'K$') ~ as.numeric(str_extract(Wage, '\\d+')) * 1000,
+    str_detect(Wage, 'M$') ~ as.numeric(str_extract(Wage, '\\d+')) * 1000000
+  ))
+
+fifa = fifa %>%
+  mutate(years = Contract_End - Contract_Start) %>%
+  drop_na(Wage)
+```
+The code above split the column Contract into two, by using ~ as a separator (i.e., 2008 ~ 2010). After inspection, some rows had additional character prior to the contract start year, so the code was adjusted to only include the last five characters in the Contract Start column. At the same time both columns were converted to numeric.
+Following that, the columns Value and Wage were converted to numeric. The dplyr function str_detect() can be used to create a sort of condition, in this case either K or M (for thousand and million). Depending on whether that was the case, the numbers were excluded and then multiplied either by one thousand or one million. 
+
+Lastly, a new column was created that shows the amount of years a player is with a club by subtracting the start from the end date. Now the data is ready to be analyzed.
+```{r}
+ggplot(data = fifa, aes(x = years, y = Wage)) +
+  geom_point(color = '#289c60') +
+  geom_smooth(method = "lm", se = FALSE, color = '#637069') +
+  theme_minimal() +
+  theme(panel.grid = element_blank()) +
+  labs(y = 'Weekly Wage (€)',
+       x = 'Years') +
+  scale_y_continuous(labels = scales::number_format(scale = 1))
+
+ggplot(data = fifa, aes(x = Wage)) +
+  geom_histogram() +
+  scale_x_continuous(labels = scales::number_format(scale = 1))
+
+fifa = fifa %>%
+  mutate(Wage_ln = log(Wage))
+
+ggplot(data = fifa, aes(x = Wage_ln)) +
+  geom_histogram() +
+  scale_x_continuous(labels = scales::number_format(scale = 1))
+ggplot(data = fifa, aes(x = years, y = Wage_ln)) +
+  geom_point(color = '#289c60') +
+  geom_smooth(method = "lm", se = FALSE, color = '#637069') +
+  theme_minimal() +
+  theme(panel.grid = element_blank()) +
+  labs(y = 'Weekly Wage (ln, €)',
+       x = 'Years') +
+  scale_y_continuous(labels = scales::number_format(scale = 1))
+
+
+fifa_lm = lm(Wage_ln ~ years + OVA, data = fifa)
+summary(fifa_lm)
+
+```
+First, looking at the scatterplot it appears that there is a positive relationship between the weekly wage and the years a player is part of a club, but it also seems that there is a significant bump between 5 and 10 years. Additionally, there is one very obvious outlier hanging out at about 16 years, and that is Lionel Messi, who has since moved on to Inter Miami in the MLS. Because the data appears to contain some outliers, a histogram confirms that by being extremely right tailed. Because of that, it makes sense to normalize the Wage data using a natural log, to mitigate this skeweness to the right at least a bit. 
+Rescaling the Wage data to its natural log seems to mitigate outliers a bit, but not fully. The scatterplot with this shows a steeper positive relationship with less outliers. Using this data, a linear model can be run that includes the variable OVA, which is the overall player's rating, as covariate. This can determine whether it is worthwhile for a player to stay loyal to a club, at least in terms of pay.
+Looking at the output of that model, it is apparent that there is a significant relationship between weekly Wage and years of membership, however, the OVa shows a higher t-value, which means that it is still the more important variable between the two, unsurprisingly. 
+Generally, however, it can be understood that staying loyal has positive benfits for a player's pay.
+Additional analyses that could be done here is to delve further into each player's position and skillsets, and whether these are affecting their pay.
+
+## Surface Temperature by Country
+This data set contains the annual mean surface temperature change by country from the years 1961 to 2022. It is a great simple data set to analyze and visualize climate change in general, and to understand which countries are most affected. First, the data is loaded, followed by cleaning and prepping it.
+```{r}
+climate_raw = read.csv('https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/Indicator_3_1_Climate_Indicators_Annual_Mean_Global_Surface_Temperature_577579683071085080.csv')
+
+climate = climate_raw %>%
+  select(ISO3, X1961:X2022) %>%
+  rename(Country = ISO3)
+```
+After importing the data set above, the code selects only the necessary columns. These include the ISO3, which is the country short-code, and each year's data. The column ISO3 is renamed to Country. Not much cleaning was needed for this data set. Since there are 225 countries, it would not be worthwhile to plot all at one. To analyze it more efficiently, the mean temperature change over all years can be calculated and the top 10 and lowest 10 can be used to get a good understanding. Additionally, a time series for these can be plotted, alongside a worldwide average, to understand the trajectories.
+
+```{r}
+climate <- climate %>%
+  mutate(average = rowMeans(select(., X1961:X2022), na.rm = TRUE))
+
+top10 = climate %>%
+  arrange(desc(average)) %>%
+  head(5)
+low10 = climate %>%
+  arrange(average) %>%
+  head(5)
+toplow10 = rbind(top10, low10)
+print(top10$average)
+print(low10$average)
+
+toplow10 = toplow10 %>%
+  gather(key = "Year", value = "Value", starts_with("X"))
+toplow10$Year = as.numeric(sub("X", "", toplow10$Year))
+
+mean_row = climate %>%
+  summarise(across(starts_with("X1961"):starts_with("X2022"), mean, na.rm = TRUE))
+
+mean_row = mean_row %>%
+  mutate(Country = "Mean") %>%
+  relocate(Country, .before = 1)
+mean_row = mean_row %>%
+  gather(key = "Year", value = "Value", starts_with("X"))
+mean_row$Year = as.numeric(sub("X", "", mean_row$Year))
+  
+
+ggplot() +
+  geom_line(data = toplow10, aes(x = Year, y = Value, group = Country, color = Country), linetype = 'solid') +
+  labs(title = "Over-the-year Temperature Change by Countries",
+       x = "Year",
+       y = "Temperature Change (°C)",
+       color = "Country") +
+  theme_minimal() +
+  theme(panel.grid = element_blank()) +
+  geom_line(data = mean_row, aes(x = Year, y = Value), linetype = "dashed")
+```
+
+The code above calculates row-wise means for each country, and then separates the five countries with the highest and lowest average, in order to show the extreme values. Additionally, the code calculates the column-wise mean, so that a global average can be calculated. Following that, both of these new data frames are converted into long format, so that it can be plotted as a time-series that can show the trajectory. Another informative plot that can be plotted is a world-heatmap that shows the average temperature change by country. Since the ISO3 code is avaialble, this is quite simple--see below.
+
+```{r}
+library(sf)
+library(rnaturalearth)
+spatial_world <- ne_countries(returnclass = "sf")
+spatial_climate <- merge(spatial_world, climate, by.x = "iso_a3", by.y = "Country", all.x = TRUE)
+
+ggplot(spatial_climate) +
+  geom_sf(aes(fill = average)) +
+  scale_fill_gradient(low = "#81c8db", high = "#e30e15", name = "average") +
+  labs(title = "Avg. Temp. Changes (Last 60 yrs)", fill = "average") +
+  theme_minimal() +
+  theme(panel.grid = element_blank())
+```
+The code above loaded the two packages sf and rnaturalearth. Sf allows to create spatial maps and rnaturalearth is a package that includes spatial information for countries. Since the column Country contains the ISO3 codes, the code simply matched them with the spatial country dataframe, then created a spatial ggplot with geom_sf. 
+This heatmap shows some interesting trajectories, namely that most countries are at an average of 0.5 degrees or above increases over the last 60 years. Additionally, it is interesting that some northern countries, like Russia and Canada report the highest over-the-year increases. This is likely explained by the pole melting, that results in steeper temperature increases. But also some equatorial countries seem to experience steep increases in temperature. 
+It would be interesting to see look at this maps with absolute average temperatures from 1961 and 2022, as it surely would give a different picture. 
+
+## Cost of Scientific Publications in 2012 - 13
+This data set shows the costs of publication of scientific research in peer reviewd journals, an endavour that has become increasingly expensive for scientistis and governments (as the primary funders of scientific research). With this data set, the question of which journals are most expensive can be answered. 
+For this, the data set is imported first, and then cleaned.
+```{r}
+research_raw = read.csv('https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/University%20returns_for_figshare_FINAL.csv')
+research = research_raw %>%
+  select(Publisher, Journal.title, COST.....charged.to.Wellcome..inc.VAT.when.charged., Article.title)
+
+research <- research %>%
+  mutate(Cost = parse_number(COST.....charged.to.Wellcome..inc.VAT.when.charged.))
+research$Cost = as.numeric(research$Cost)
+```
+
+The code above imported the dataset and also edited the cost column. This had the GPB symbol included, that is not suitable for numerical datatypes. Using parse_number() this was removed and the column was renamed to a shorter name. The two main questions are the distribution of the publishing cost, as well as the most expensive and least expensibve publishers.
+```{r}
+ggplot(data = research, aes(x = Cost)) +
+  geom_histogram() +
+  labs(x = "Cost (£)", y = "Count")
+
+mean_costs <- research %>%
+  group_by(Publisher) %>%
+  summarise(mean_cost = mean(Cost, na.rm = TRUE))
+print(max(mean_costs$mean_cost))
+print(min(mean_costs$mean_cost))
+```
+
+As can be seen in the histogram above, most publication costs range between 0 and 5000£, however, there are a few more expensive outliers. Specifically, the most expensive publication was to the publisher MacMillan, but no journal name is indicated. It cost 13,200£, and is more than twice as expensive as second publication. Therefore, it is possible that this is a book. The least expensive publication was to the journal American Society for Nutrition and cost 45.94£. This dataset is challenging as it is not well recorded (i.e., the publisher names contain spelling errors); therefore, it is hard to further analyze this dataset without invading severley. While this dataset contains interesting information, it is the perfect example of how important data quality is. 
