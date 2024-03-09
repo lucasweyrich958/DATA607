@@ -1,0 +1,47 @@
+---
+title: "DATA607 Assignment 5"
+author: "Lucas Weyrich"
+date: "2024-03-09"
+output: html_document
+---
+For this assignment, we have to pick three books of our choice and create a small data frame with attrbutes about them, then try to load them into R as a JSON, XML, and HTML files. For this, I picked the books Behave by Robert Sapolsky, Growth by Vaclav Smil, and A Thousan Brains by Jeff Hawkins and Richard Dawkins. All three amazing books that I could talk for hours about. 
+I created the files by hand on my laptop and then uploaded them to GitHub for online access.
+
+(1) Loading an HTML table file
+```{r}
+library(rvest)
+html = read_html("https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/books.html")
+
+table_nodes = html_nodes(html, "table")
+
+html_table = html_table(table_nodes[[1]], fill = TRUE)
+```
+In the code I load the HTML file from my GitHub using the rvest package. Then I extract the table nodes into a new variable, and then finally I generate the table from those nodes.
+
+```{r}
+library(XML)
+github = "https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/books.xml"
+
+download.file(github, destfile = "books.xml", mode = "wb")
+
+xml = xmlParse("books.xml", useInternalNodes = TRUE)
+xml = xmlToDataFrame(xml, stringsAsFactors = FALSE)
+```
+Importing the XML file locally was no problem, but once I uploaded it to GitHub, the XML package had issues to load it into R, so I just download the XML file into the local directory and then import it from there. So make sure to delete this file from you wd later. :)
+I have tried to get the first row to be the column header, but it seems like the XML package does not inherently allow that.
+
+```{r}
+library(jsonlite)
+
+json = fromJSON("https://raw.githubusercontent.com/lucasweyrich958/DATA607/main/books.json")
+```
+The JSON file can be loaded into R via the package jsonlite, and it seems that this was the easiest of the three. Also in terms of creating it. Below all final three data frames are printed.
+
+```{r}
+html_table
+xml
+json
+```
+As can be seen, all three filetypes were successfully imported, with a few extra steps required for HTML and XML files. For some reason the header in the XML file does not want to coopoerate. I also would like to mention that, in terms of the XML file, and likely for the other file types too, these are simple examples. At work I had an instance where I wanted to work with an XML file, a big one with several hundred columns and rows, and it did not cooperate as nicely as here. 
+
+
