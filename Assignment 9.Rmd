@@ -1,0 +1,31 @@
+---
+title: "DATA607 Assignment 9"
+author: "Lucas Weyrich"
+date: "2024-03-23"
+output: html_document
+---
+
+In this assignment, we are required to access an API from the New York Times and scrape a JSON formatted table that we then convert into a data frame. To get access to an API key, one needs to make an account with NYT developers. I chose to use the book API.
+APIs can be easily accessed using the httr package
+
+```{r}
+library(httr)
+library(jsonlite)
+```
+
+While some API require a separate command to enter the key, the NYT API allows the key inside of the URL. I decided to get the book reviews for the author Steven Pinker, a psychology professor and bestselling author at Harvard University.
+
+```{r}
+res = GET("https://api.nytimes.com/svc/books/v3/reviews.json?author=Steven+Pinker&api-key=zcx9ad4Vhxkw8E3sTKxdkYKnAVUE6mql")
+res
+```
+
+Investigating the res variable, we can see that the status is 200, which means it returned data successfully. Using the jsonlite package we can efficently work with the JSON data and extract it from the response variable to use it in R. First we need to convert the string that is the variable content in the res list to JSON, upon which we can then convert it to a dataframe.
+
+```{r}
+data = fromJSON(rawToChar(res$content))
+pinker = as.data.frame(data$results)
+pinker
+```
+
+The pinker dataframe contains the scraped information: Book reviews previously published in the NYT for books of him. There are less reviews than I expected (only 9), given he's published more bestselling books than the ones listed. I had hoped that there would be some type of quantitative score for each review, but there is not, so one could do a sentiment analysis of the reviews, then standardize it to recieve such a score.
