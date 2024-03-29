@@ -1,0 +1,344 @@
+---
+title: "DATA 607 Assignment 8"
+author: "Lucas Weyrich"
+date: "2024-03-29"
+output: html_document
+---
+This assignment utilized example code from the book "Text Mining With R: A Tidy Approach" by Julia Silge and David Robinson (see here: https://www.tidytextmining.com).
+In particular, it uses the code from chapter 2, sentiment analysis. The chapter uses three lexicons, namely,
+* `AFINN` from Finn Årup Nielsen,
+* `bing` from Bing Liu and collaborators, and
+* `nrc` from Saif Mohammad and Peter Turney.
+
+Below, the chapter's full code is presented, however without any annotations.
+
+```{r}
+library(tidytext)
+
+afinn = get_sentiments("afinn")
+```
+
+```{r}
+bing = get_sentiments("bing")
+```
+
+```{r}
+nrc = get_sentiments("nrc")
+```
+
+```{r}
+library(janeaustenr)
+library(dplyr)
+library(stringr)
+
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+```
+
+```{r}
+nrc_joy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")
+
+tidy_books %>%
+  filter(book == "Emma") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+nrc_joy <- nrc %>% 
+  filter(sentiment == "joy")
+
+tidy_books %>%
+  filter(book == "Emma") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+library(tidyr)
+
+jane_austen_sentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(jane_austen_sentiment, aes(index, sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+```{r}
+pride_prejudice <- tidy_books %>% 
+  filter(book == "Pride & Prejudice")
+
+pride_prejudice
+```
+
+```{r}
+afinn <- pride_prejudice %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  pride_prejudice %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  pride_prejudice %>% 
+    inner_join(get_sentiments("nrc") %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+```{r}
+afinn <- pride_prejudice %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  pride_prejudice %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  pride_prejudice %>% 
+    inner_join(nrc %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+```{r}
+bind_rows(afinn, 
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+```{r}
+get_sentiments("nrc") %>% 
+  filter(sentiment %in% c("positive", "negative")) %>% 
+  count(sentiment)
+
+
+```
+
+```{r}
+nrc %>% 
+  filter(sentiment %in% c("positive", "negative")) %>% 
+  count(sentiment)
+```
+
+
+```{r}
+get_sentiments("bing") %>% 
+  count(sentiment)
+```
+
+```{r}
+bing_word_counts <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+```
+
+```{r}
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>% 
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+```{r}
+custom_stop_words <- bind_rows(tibble(word = c("miss"),  
+                                      lexicon = c("custom")), 
+                               stop_words)
+
+custom_stop_words
+```
+
+```{r}
+library(wordcloud)
+
+tidy_books %>%
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+
+```{r}
+library(reshape2)
+
+tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20", "gray80"),
+                   max.words = 100)
+```
+
+```{r}
+austen_chapters <- austen_books() %>%
+  group_by(book) %>%
+  unnest_tokens(chapter, text, token = "regex", 
+                pattern = "Chapter|CHAPTER [\\dIVXLC]") %>%
+  ungroup()
+
+austen_chapters %>% 
+  group_by(book) %>% 
+  summarise(chapters = n())
+```
+
+```{r}
+bingnegative <- get_sentiments("bing") %>% 
+  filter(sentiment == "negative")
+
+wordcounts <- tidy_books %>%
+  group_by(book, chapter) %>%
+  summarize(words = n())
+
+tidy_books %>%
+  semi_join(bingnegative) %>%
+  group_by(book, chapter) %>%
+  summarize(negativewords = n()) %>%
+  left_join(wordcounts, by = c("book", "chapter")) %>%
+  mutate(ratio = negativewords/words) %>%
+  filter(chapter != 0) %>%
+  slice_max(ratio, n = 1) %>% 
+  ungroup()
+```
+# Extension
+
+The general idea of this chapter was to provide an overview of how to perform sentiment analysis simply with tidyr and sentiment lexica. It is a method to provide understanding of the general sentimental words for a specific text, which can then be used to further understand text data. Below, this sentiment analysis is extended in two ways: using a different corpus, namely, the sentiments of New York Times article titles from the month of February 2024 scraped from the NYT API. 
+Below, a connection to the API is established and the data pulled, by identifying the year and month of interested, as well as the API key. Then, the data is moved from a JSON file to an R data frame for manipulation.
+```{r}
+library(httr)
+library(jsonlite)
+library(wordcloud)
+
+nyt = GET("https://api.nytimes.com/svc/archive/v1/2024/2.json?api-key=47MqAqoMmhQVNdgxdpxgaQ2rlY2GCKRD")
+nyt
+data = fromJSON(rawToChar(nyt$content))
+articles = as.data.frame(data$response)
+```
+Examining the articles data frame, it becomes apparent that there is a lot of information that is not needed for this project, therefore, most columns are omitted. Additionally, the full text of the articles are not shown, as New York Times would like money for that, understandably. Two columns are retained: docs.headline and docs.pub_date. Additionally, the assignment requires a new lexicon to be used, which will be the Jockers lexicon from 2017. This lexicon has 10,738 words and is aiming to incorporate emotional shifts in text, with scores ranging from -1 to +1.
+
+```{r}
+jockers = lexicon::hash_sentiment_jockers
+
+articles = articles[,c("docs.headline","docs.pub_date","docs.abstract")]
+articles = do.call(data.frame, articles)
+articles = articles[,c("docs.headline.main","docs.pub_date","docs.abstract")]
+colnames(articles) = c("Headline", "Date", "Abstract")
+
+articles$Date = as.Date(articles$Date, format = "%Y-%m-%d")
+
+articles_words <- articles %>%
+  unnest_tokens(word, Headline)
+
+colnames(jockers) = c("word", "sentiment")
+jockers_positive = jockers %>%
+  filter(sentiment > 0)
+jockers_negative = jockers %>%
+  filter(sentiment < 0)
+
+
+articles_words %>%
+  inner_join(jockers_positive) %>%
+  count(word, sort = T) %>%
+  top_n(10)
+
+articles_words %>%
+  inner_join(jockers_negative) %>%
+  count(word, sort = T) %>%
+  top_n(10)
+
+articles_words = articles_words %>%
+  inner_join(jockers)
+```
+The above code did the following things: it pulled the Jockers lexicon from the package lexicon, then omitted all columns from the NYT articles and renamed the columns, unnested the NYT articles for each word. Separated the positive and negative words in the Jockers lexicon, and then separately performed an inner join on the NYT article words for each positive and negative. 
+The output shows that the most used positive word in February 2024 was new, followed by love and super. On the other hand, the most common negative word was trump, which is very interesting because NYT is likely referring to Donald Trump mostly, but the verb "to trump" is what the Jockers lexicon refers to. 
+
+Additionally to this, below analyzes the net sentiment as function of time (i.e., positive scores minus negative scores per day).
+
+```{r}
+articles_words %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+
+time_series = articles_words %>%
+  group_by(Date) %>%
+  summarize(positive = sum(sentiment > 0, na.rm = TRUE), 
+            negative = sum(sentiment < 0, na.rm = TRUE)) %>%
+  mutate(sentiment_value = positive - negative)
+time_series$Date = as.Date(time_series$Date)
+
+ggplot(aes(x = Date, y = sentiment_value), data = time_series) +
+  geom_line(color = "darkgreen") +
+  theme_minimal() +
+  labs(x = 'Date', y = 'Sentiment Score (Positive - Negative)', title = 'Net Sentiment of NYT Headlines') +
+  geom_hline(yintercept = mean(time_series$sentiment_value), color="salmon")
+
+```
+
+The word cloud shown above shows the most common positive and negative words for all NYT headlines in the month of February, 2024. 
+
+As can be seen on the time series, it appears that the sentiment per day are quite volatile, with the highest value on 30 on 02/13 and the lowest value of -47 on 02/22. Interestingly, since the Jockers lexicon evaluates sentiments based on its magnitude, computing any summary statistics here will show not the count of appearances, but actually take into account the importance for each words. 
+The horizontal line depicts the average sentiment across the month, which shows that, on average, sentiments are more negative than positive. Given that the New York Times is one of the most read news papers around the world, it is not surprising that the average sentiment is negative. 
+
+Given that the most used negative word is "trump" and through domain knowledge it can be inferred that NYT refers to Donald Trump, below the same time series is re-run without this word to see how much of an impact it has.
+
+```{r}
+articles_word_no_trump = articles_words[!grepl("trump", articles_words$word),]
+time_series_no_trump = articles_word_no_trump %>%
+  group_by(Date) %>%
+  summarize(positive = sum(sentiment > 0, na.rm = TRUE), 
+            negative = sum(sentiment < 0, na.rm = TRUE)) %>%
+  mutate(sentiment_value = positive - negative)
+time_series_no_trump$Date = as.Date(time_series_no_trump$Date)
+
+ggplot(aes(x = Date, y = sentiment_value), data = time_series_no_trump) +
+  geom_line(color = "darkgreen") +
+  theme_minimal() +
+  labs(x = 'Date', y = 'Sentiment Score (Positive - Negative)', title = 'Net Sentiment of NYT Headlines') +
+  geom_hline(yintercept = mean(time_series_no_trump$sentiment_value), color="salmon")
+
+```
+
+Interestingly, the average sentiment is positive when excluding the word "trump". While the volatility of the sentiments over time, this is in contrast to the general conception that the news is more negative than positive. However, it is very important to remember that several words, which are classified either positive or negative, can be easily utilized in the opposite sentiment, which in turn can invalidate our results. Additionally, the content of an article may be different altogether compared to its headline.
